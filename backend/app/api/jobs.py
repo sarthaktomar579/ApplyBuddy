@@ -1,0 +1,333 @@
+"""Jobs API routes - Discovery, listing, and management."""
+import json
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, or_
+from sqlalchemy.orm import selectinload
+from pydantic import BaseModel
+from typing import Optional, List
+from app.core.database import get_db
+from app.models.job import Job, JobSkill
+from app.models.job_match import JobMatch
+
+router = APIRouter()
+
+
+class ManualJobRequest(BaseModel):
+    title: str
+    company: str
+    location: Optional[str] = None
+    employment_type: Optional[str] = None
+    work_arrangement: Optional[str] = None
+    experience_required: Optional[str] = None
+    salary_min: Optional[float] = None
+    salary_max: Optional[float] = None
+    salary_currency: str = "INR"
+    description: Optional[str] = None
+    required_skills: Optional[List[str]] = None
+    preferred_skills: Optional[List[str]] = None
+    application_url: Optional[str] = None
+    source_url: Optional[str] = None
+
+
+@router.get("")
+async def list_jobs(
+    skip: int = 0,
+    limit: int = 20,
+    search: Optional[str] = None,
+    location: Optional[str] = None,
+    employment_type: Optional[str] = None,
+    is_active: Optional[bool] = True,
+    is_relevant: Optional[bool] = None,
+    is_bookmarked: Optional[bool] = None,
+    sort_by: str = "discovered_at",
+    sort_order: str = "desc",
+    db: AsyncSession = Depends(get_db),
+):
+    """List jobs with filters and pagination."""
+    query = select(Job).where(Job.user_id == 1)
+    
+    if is_active is not None:
+        query = query.where(Job.is_active == is_active)
+    if is_relevant is not None:
+        query = query.where(Job.is_relevant == is_relevant)
+    if is_bookmarked is not None:
+        query = query.where(Job.is_bookmarked == is_bookmarked)
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                Job.title.ilike(search_term),
+                Job.company.ilike(search_term),
+                Job.description.ilike(search_term),
+            )
+        )
+    if location:
+        query = query.where(Job.location.ilike(f"%{location}%"))
+    if employment_type:
+        query = query.where(Job.employment_type == employment_type)
+    
+    # Count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar()
+    
+    # Sort
+    sort_col = getattr(Job, sort_by, Job.discovered_at)
+    if sort_order == "desc":
+        query = query.order_by(sort_col.desc())
+    else:
+        query = query.order_by(sort_col.asc())
+    
+    # Paginate
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query.options(selectinload(Job.skills), selectinload(Job.match)))
+    jobs = result.scalars().all()
+    
+    return {
+        "total": total,
+        "jobs": [_job_to_dict(j) for j in jobs],
+        "skip": skip,
+        "limit": limit,
+    }
+
+
+@router.post("")
+async def add_manual_job(request: ManualJobRequest, db: AsyncSession = Depends(get_db)):
+    """Manually add a job listing."""
+    # Create canonical URL for deduplication
+    canonical = request.application_url or request.source_url or f"manual_{request.company}_{request.title}_{datetime.now(timezone.utc).timestamp()}"
+    
+    # Check for duplicates
+    existing = await db.execute(select(Job).where(Job.canonical_url == canonical))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="This job listing already exists")
+    
+    job = Job(
+        user_id=1,
+        title=request.title,
+        company=request.company,
+        location=request.location,
+        employment_type=request.employment_type,
+        work_arrangement=request.work_arrangement,
+        experience_required=request.experience_required,
+        salary_min=request.salary_min,
+        salary_max=request.salary_max,
+        salary_currency=request.salary_currency,
+        description=request.description,
+        required_skills=json.dumps(request.required_skills) if request.required_skills else None,
+        preferred_skills=json.dumps(request.preferred_skills) if request.preferred_skills else None,
+        application_url=request.application_url,
+        source_url=request.source_url,
+        canonical_url=canonical,
+        source="manual",
+    )
+    db.add(job)
+    await db.flush()
+    
+    # Add skills
+    if request.required_skills:
+        for skill in request.required_skills:
+            db.add(JobSkill(job_id=job.id, skill_name=skill, is_required=True))
+    if request.preferred_skills:
+        for skill in request.preferred_skills:
+            db.add(JobSkill(job_id=job.id, skill_name=skill, is_required=False))
+    
+    await db.flush()
+    return {"id": job.id, "message": "Job added successfully"}
+
+
+@router.get("/{job_id}")
+async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
+    """Get job details."""
+    result = await db.execute(
+        select(Job)
+        .where(Job.id == job_id)
+        .options(selectinload(Job.skills), selectinload(Job.match))
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return _job_to_dict(job)
+
+
+@router.put("/{job_id}/bookmark")
+async def toggle_bookmark(job_id: int, db: AsyncSession = Depends(get_db)):
+    """Toggle job bookmark."""
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job.is_bookmarked = not job.is_bookmarked
+    return {"bookmarked": job.is_bookmarked}
+
+
+@router.put("/{job_id}/relevant")
+async def mark_relevant(job_id: int, relevant: bool = True, db: AsyncSession = Depends(get_db)):
+    """Mark job as relevant or irrelevant."""
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job.is_relevant = relevant
+    return {"is_relevant": job.is_relevant}
+
+
+@router.delete("/{job_id}")
+async def delete_job(job_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a job listing."""
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    await db.delete(job)
+    return {"message": "Job deleted"}
+
+
+@router.post("/discover")
+async def trigger_job_discovery(db: AsyncSession = Depends(get_db)):
+    """Trigger job discovery engine to fetch fresh opportunities and match them."""
+    from app.services.job_discovery import job_discovery_service
+    from app.models.profile import Profile, Skill
+
+    # Get user profile skills
+    profile_res = await db.execute(select(Profile).where(Profile.user_id == 1).options(selectinload(Profile.skills)))
+    profile = profile_res.scalar_one_or_none()
+    skills = [s.name for s in (profile.skills or [])] if profile else []
+
+    profile_data = {
+        "full_name": profile.full_name if profile else "Sarthak Singh Tomar",
+        "skills": skills,
+        "preferred_locations": ["Bengaluru", "Hyderabad", "Pune", "Delhi NCR", "Noida", "Mumbai", "Remote"],
+    }
+
+    result = await job_discovery_service.discover_jobs(db, profile_data)
+    return {
+        "status": "success",
+        "discovered": result["discovered"],
+        "existing": result["existing"],
+        "total_processed": result["total_processed"],
+        "message": f"Discovery complete: {result['discovered']} new jobs found and evaluated."
+    }
+
+
+@router.post("/{job_id}/match")
+async def evaluate_job_match_endpoint(job_id: int, db: AsyncSession = Depends(get_db)):
+    """Re-evaluate AI match score and analysis for a specific job."""
+    from app.services.ai_provider import ai_service
+    from app.models.profile import Profile
+
+    result = await db.execute(
+        select(Job).where(Job.id == job_id).options(selectinload(Job.skills), selectinload(Job.match))
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    profile_res = await db.execute(select(Profile).where(Profile.user_id == 1).options(selectinload(Profile.skills)))
+    profile = profile_res.scalar_one_or_none()
+    skills = [s.name for s in (profile.skills or [])] if profile else []
+
+    profile_data = {
+        "full_name": profile.full_name if profile else "Sarthak Singh Tomar",
+        "skills": skills,
+        "preferred_locations": ["Bengaluru", "Hyderabad", "Pune", "Delhi NCR", "Remote"],
+    }
+
+    req_skills = [s.skill_name for s in job.skills if s.is_required] if job.skills else []
+    pref_skills = [s.skill_name for s in job.skills if not s.is_required] if job.skills else []
+
+    eval_res = await ai_service.evaluate_job_match(
+        job_data={
+            "title": job.title,
+            "company": job.company,
+            "location": job.location,
+            "work_arrangement": job.work_arrangement,
+            "experience_required": job.experience_required,
+            "description": job.description,
+            "required_skills": req_skills,
+            "preferred_skills": pref_skills,
+        },
+        profile_data=profile_data
+    )
+
+    if not job.match:
+        match_obj = JobMatch(job_id=job.id, user_id=1)
+        db.add(match_obj)
+        job.match = match_obj
+
+    job.match.overall_score = eval_res["overall_score"]
+    job.match.skills_score = eval_res["skills_score"]
+    job.match.experience_score = eval_res["experience_score"]
+    job.match.education_score = eval_res["education_score"]
+    job.match.location_score = eval_res["location_score"]
+    job.match.salary_score = eval_res["salary_score"]
+    job.match.matching_skills = json.dumps(eval_res["matching_skills"])
+    job.match.missing_skills = json.dumps(eval_res["missing_skills"])
+    job.match.relevant_projects = json.dumps(eval_res["relevant_projects"])
+    job.match.is_eligible = eval_res["is_eligible"]
+    job.match.eligibility_issues = json.dumps(eval_res["eligibility_issues"])
+    job.match.match_reasons = json.dumps(eval_res["match_reasons"])
+    job.match.recommended_action = eval_res["recommended_action"]
+
+    await db.commit()
+    return {"message": "Job match evaluated", "match": eval_res}
+
+
+def _parse_json(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def _job_to_dict(job: Job) -> dict:
+    match_data = None
+    if job.match:
+        match_data = {
+            "overall_score": job.match.overall_score,
+            "skills_score": job.match.skills_score,
+            "experience_score": job.match.experience_score,
+            "education_score": job.match.education_score,
+            "location_score": job.match.location_score,
+            "salary_score": job.match.salary_score,
+            "matching_skills": _parse_json(job.match.matching_skills),
+            "missing_skills": _parse_json(job.match.missing_skills),
+            "relevant_projects": _parse_json(job.match.relevant_projects),
+            "is_eligible": job.match.is_eligible,
+            "eligibility_issues": _parse_json(job.match.eligibility_issues),
+            "match_reasons": _parse_json(job.match.match_reasons),
+            "recommended_action": job.match.recommended_action,
+        }
+    
+    return {
+        "id": job.id,
+        "title": job.title,
+        "company": job.company,
+        "location": job.location,
+        "employment_type": job.employment_type,
+        "work_arrangement": job.work_arrangement,
+        "experience_required": job.experience_required,
+        "salary_min": job.salary_min,
+        "salary_max": job.salary_max,
+        "salary_currency": job.salary_currency,
+        "description": job.description,
+        "required_skills": _parse_json(job.required_skills),
+        "preferred_skills": _parse_json(job.preferred_skills),
+        "application_url": job.application_url,
+        "source_url": job.source_url,
+        "source": job.source,
+        "date_posted": job.date_posted.isoformat() if job.date_posted else None,
+        "application_deadline": job.application_deadline.isoformat() if job.application_deadline else None,
+        "discovered_at": job.discovered_at.isoformat() if job.discovered_at else None,
+        "is_active": job.is_active,
+        "is_bookmarked": job.is_bookmarked,
+        "is_relevant": job.is_relevant,
+        "match": match_data,
+        "skills": [{"name": s.skill_name, "is_required": s.is_required} for s in (job.skills or [])],
+    }
