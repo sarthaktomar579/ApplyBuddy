@@ -73,6 +73,15 @@ export const updateApplicationDetails = async (id: number, details: Partial<Appl
   return res.data;
 };
 
+export const autoApplyMatches = async (params?: { min_score?: number; max_count?: number; send_now?: boolean }): Promise<{
+  processed_count: number;
+  results: any[];
+  gmail_connected: boolean;
+}> => {
+  const res = await api.post('/applications/auto-apply', params || {});
+  return res.data;
+};
+
 // Emails
 export const getEmails = async (status?: string): Promise<{ total: number; emails: Email[] }> => {
   const res = await api.get('/emails', { params: { status } });

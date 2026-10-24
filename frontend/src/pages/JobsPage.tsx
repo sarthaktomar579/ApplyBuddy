@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getJobs, toggleBookmark, triggerJobDiscovery, createApplication, evaluateJobMatch } from '../services/api';
+import { getJobs, toggleBookmark, triggerJobDiscovery, createApplication, evaluateJobMatch, autoApplyMatches } from '../services/api';
 import { Job } from '../types';
 import { Navbar } from '../components/Navbar';
 import { MatchBadge } from '../components/MatchBadge';
@@ -22,7 +22,8 @@ import {
   ExternalLink,
   Loader2,
   RefreshCw,
-  CheckCircle2
+  CheckCircle2,
+  Send
 } from 'lucide-react';
 
 export const JobsPage: React.FC = () => {
@@ -38,6 +39,7 @@ export const JobsPage: React.FC = () => {
   const [emailJob, setEmailJob] = useState<Job | null>(null);
   const [showManualModal, setShowManualModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [autoApplying, setAutoApplying] = useState(false);
 
   const fetchJobsList = async () => {
     setLoading(true);
@@ -97,6 +99,27 @@ export const JobsPage: React.FC = () => {
     }
   };
 
+  const handleAutoApply = async () => {
+    if (!window.confirm('Auto-Apply will generate personalized cold emails for all 70%+ match jobs, attach your resume (Resume_SarthakT.pdf), and dispatch them via your Gmail. Proceed?')) {
+      return;
+    }
+    setAutoApplying(true);
+    try {
+      const res = await autoApplyMatches({ min_score: 70, max_count: 5, send_now: true });
+      if (res.processed_count > 0) {
+        setToastMessage(`Auto-applied to ${res.processed_count} top matching jobs! Resume attached & emails processed.`);
+      } else {
+        setToastMessage('All high-match jobs are already applied to or in your pipeline!');
+      }
+      setTimeout(() => setToastMessage(null), 5000);
+      await fetchJobsList();
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Failed to auto-apply');
+    } finally {
+      setAutoApplying(false);
+    }
+  };
+
   const filteredJobs = jobs.filter((j) => {
     if (minScoreFilter > 0) {
       return (j.match?.overall_score || 0) >= minScoreFilter;
@@ -111,6 +134,14 @@ export const JobsPage: React.FC = () => {
         subtitle="Automated scouting of software engineering openings with instant match ranking"
         actions={
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleAutoApply}
+              disabled={autoApplying}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/30 transition-all disabled:opacity-60"
+            >
+              {autoApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              Auto-Apply to High Matches (70%+)
+            </button>
             <button
               onClick={() => setShowManualModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors"

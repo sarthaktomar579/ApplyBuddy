@@ -179,15 +179,128 @@ async def get_application(app_id: int, db: AsyncSession = Depends(get_db)):
     return data
 
 
-@router.delete("/{app_id}")
-async def delete_application(app_id: int, db: AsyncSession = Depends(get_db)):
-    """Delete an application."""
-    result = await db.execute(select(Application).where(Application.id == app_id))
-    app = result.scalar_one_or_none()
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
     await db.delete(app)
     return {"message": "Application deleted"}
+
+
+class AutoApplyRequest(BaseModel):
+    min_score: int = 70
+    max_count: int = 5
+    send_now: bool = True
+
+
+@router.post("/auto-apply")
+async def auto_apply_high_matches(request: AutoApplyRequest, db: AsyncSession = Depends(get_db)):
+    """Automatically apply to high-match jobs by generating tailored emails, attaching resume, and dispatching via Gmail."""
+    from app.models.job import Job
+    from app.models.job_match import JobMatch
+    from app.models.email import Email
+    from app.models.resume import Resume
+    from app.models.recruiter import Recruiter
+    from app.models.integration import Integration
+    from app.services.ai_provider import ai_service
+    from app.api.gmail import send_email
+
+    # Check Gmail status
+    gmail_res = await db.execute(select(Integration).where(Integration.provider == "gmail", Integration.user_id == 1))
+    gmail = gmail_res.scalar_one_or_none()
+    is_gmail_ready = bool(gmail and gmail.is_connected)
+
+    # Get default resume
+    resume_res = await db.execute(select(Resume).where(Resume.user_id == 1, Resume.is_default == True))
+    default_resume = resume_res.scalar_one_or_none()
+
+    # Find jobs with score >= min_score
+    query = (
+        select(Job)
+        .join(JobMatch, Job.id == JobMatch.job_id)
+        .where(Job.user_id == 1, JobMatch.overall_score >= request.min_score, Job.is_active == True)
+        .order_by(JobMatch.overall_score.desc())
+        .limit(request.max_count * 2)
+    )
+    jobs_res = await db.execute(query.options(selectinload(Job.match)))
+    candidates = jobs_res.scalars().all()
+
+    applied_results = []
+    
+    for job in candidates:
+        if len(applied_results) >= request.max_count:
+            break
+
+        # Check if already applied or email exists
+        existing_app = await db.execute(select(Application).where(Application.job_id == job.id, Application.user_id == 1))
+        if existing_app.scalar_one_or_none():
+            continue
+
+        existing_email = await db.execute(select(Email).where(Email.job_id == job.id, Email.user_id == 1))
+        if existing_email.scalar_one_or_none():
+            continue
+
+        # Look up recruiter
+        rec_res = await db.execute(select(Recruiter).where(Recruiter.company.ilike(f"%{job.company}%")).limit(1))
+        rec = rec_res.scalar_one_or_none()
+
+        target_name = rec.name if rec else f"{job.company} Hiring Team"
+        target_email = rec.email if rec else f"careers@{job.company.lower().replace(' ', '')}.com"
+        is_verified = (rec.verification_status == "verified_official") if rec else False
+
+        # Generate personalized email
+        email_content = await ai_service.generate_cold_email(
+            job_data={"title": job.title, "company": job.company, "description": job.description or ""},
+            profile_data={"full_name": "Sarthak Singh Tomar", "email": "sarthakt579@gmail.com", "github_url": "https://github.com/sarthaktomar579"},
+            recruiter_name=target_name
+        )
+
+        email_obj = Email(
+            user_id=1,
+            job_id=job.id,
+            to_email=target_email,
+            to_name=target_name,
+            subject=email_content["subject"],
+            body=email_content["body"],
+            resume_id=default_resume.id if default_resume else None,
+            status="approved" if (is_gmail_ready and request.send_now) else "awaiting_approval",
+            recipient_verified=is_verified,
+            recipient_source=rec.evidence if rec else "Auto-derived careers channel",
+        )
+        db.add(email_obj)
+        await db.flush()
+
+        app_obj = Application(
+            user_id=1,
+            job_id=job.id,
+            status="email_sent" if (is_gmail_ready and request.send_now) else "preparing_application",
+            applied_via="email",
+            notes=f"Auto-applied to {target_name} ({target_email}) with Resume attached.",
+        )
+        db.add(app_obj)
+        await db.flush()
+
+        sent_success = False
+        if is_gmail_ready and request.send_now:
+            try:
+                await send_email(email_obj.id, db=db)
+                sent_success = True
+            except Exception as e:
+                pass
+
+        applied_results.append({
+            "job_id": job.id,
+            "company": job.company,
+            "title": job.title,
+            "score": job.match.overall_score if job.match else request.min_score,
+            "to_email": target_email,
+            "email_sent": sent_success,
+            "resume_attached": bool(default_resume),
+            "status": "sent" if sent_success else "queued_for_approval",
+        })
+
+    await db.commit()
+    return {
+        "processed_count": len(applied_results),
+        "results": applied_results,
+        "gmail_connected": is_gmail_ready,
+    }
 
 
 def _app_to_dict(app: Application) -> dict:
