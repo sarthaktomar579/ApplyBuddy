@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { DashboardPage } from './pages/DashboardPage';
 import { JobsPage } from './pages/JobsPage';
+import { AppliedJobsPage } from './pages/AppliedJobsPage';
 import { EmailsPage } from './pages/EmailsPage';
 import { ApplicationsTrackerPage } from './pages/ApplicationsTrackerPage';
 import { ResumeStudioPage } from './pages/ResumeStudioPage';
@@ -22,6 +23,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/jobs" element={<JobsPage />} />
+            <Route path="/applied-jobs" element={<AppliedJobsPage />} />
             <Route path="/emails" element={<EmailsPage />} />
             <Route path="/applications" element={<ApplicationsTrackerPage />} />
             <Route path="/resume-studio" element={<ResumeStudioPage />} />

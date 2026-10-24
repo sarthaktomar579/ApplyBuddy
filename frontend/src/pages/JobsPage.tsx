@@ -34,6 +34,8 @@ export const JobsPage: React.FC = () => {
   const [locationFilter, setLocationFilter] = useState('');
   const [minScoreFilter, setMinScoreFilter] = useState<number>(0);
   const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
+  const [latestOnly, setLatestOnly] = useState(true);
+  const [sourceFilter, setSourceFilter] = useState('');
   const [discovering, setDiscovering] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [emailJob, setEmailJob] = useState<Job | null>(null);
@@ -47,6 +49,8 @@ export const JobsPage: React.FC = () => {
       const data = await getJobs({
         search: search || undefined,
         location: locationFilter || undefined,
+        source: sourceFilter || undefined,
+        latest_only: latestOnly,
         is_bookmarked: bookmarkedOnly ? true : undefined,
         limit: 50,
       });
@@ -60,7 +64,7 @@ export const JobsPage: React.FC = () => {
 
   useEffect(() => {
     fetchJobsList();
-  }, [search, locationFilter, bookmarkedOnly]);
+  }, [search, locationFilter, bookmarkedOnly, latestOnly, sourceFilter]);
 
   const handleToggleBookmark = async (e: React.MouseEvent, job: Job) => {
     e.stopPropagation();
@@ -135,6 +139,13 @@ export const JobsPage: React.FC = () => {
         actions={
           <div className="flex items-center gap-2">
             <button
+              onClick={() => navigate('/applied-jobs')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              View Applied Jobs
+            </button>
+            <button
               onClick={handleAutoApply}
               disabled={autoApplying}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/30 transition-all disabled:opacity-60"
@@ -187,6 +198,32 @@ export const JobsPage: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {/* Latest Jobs Filter Toggle */}
+              <button
+                type="button"
+                onClick={() => setLatestOnly(!latestOnly)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${
+                  latestOnly
+                    ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                Latest Only (≥ Oct 22, 2026)
+              </button>
+
+              {/* Source Filter */}
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
+              >
+                <option value="">All Job Sources</option>
+                <option value="linkedin">LinkedIn Jobs Only</option>
+                <option value="careers_portal">Company Portals</option>
+                <option value="greenhouse">Greenhouse / Lever</option>
+              </select>
+
               <select
                 value={locationFilter}
                 onChange={(e) => setLocationFilter(e.target.value)}
@@ -269,6 +306,15 @@ export const JobsPage: React.FC = () => {
                     <h3 className="text-base font-bold text-white group-hover:text-indigo-300 transition-colors">
                       {job.title}
                     </h3>
+                    <span
+                      className={`text-[11px] px-2 py-0.5 rounded font-medium border ${
+                        job.source === 'linkedin'
+                          ? 'bg-blue-600/15 text-blue-400 border-blue-500/30 font-semibold'
+                          : 'bg-slate-800 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      {job.source === 'linkedin' ? 'LinkedIn Job' : job.source?.replace('_', ' ') || 'Direct'}
+                    </span>
                     {job.match && <MatchBadge score={job.match.overall_score} size="sm" />}
                   </div>
 
@@ -277,6 +323,12 @@ export const JobsPage: React.FC = () => {
                       <MapPin className="w-3.5 h-3.5 text-slate-500" />
                       {job.location || 'Remote'} ({job.work_arrangement || 'Flexible'})
                     </span>
+                    {job.date_posted && (
+                      <span className="flex items-center gap-1 text-amber-300/90 font-medium">
+                        <Clock className="w-3.5 h-3.5 text-amber-400/80" />
+                        Posted: {new Date(job.date_posted).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                    )}
                     {job.salary_min && (
                       <span className="flex items-center gap-1 text-emerald-400 font-medium">
                         <DollarSign className="w-3.5 h-3.5" />

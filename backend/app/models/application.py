@@ -19,7 +19,8 @@ class Application(Base):
     #           interview_scheduled, rejected, offer_received, withdrawn
     
     # Application details
-    applied_via = Column(String(100))  # email, portal, referral
+    applied_via = Column(String(100))  # email, portal, referral, linkedin
+    applied_by = Column(String(50), default="user")  # 'ai' or 'user'
     application_url = Column(String(1000))
     cover_letter = Column(Text)
     custom_resume_id = Column(Integer, ForeignKey("resumes.id"))

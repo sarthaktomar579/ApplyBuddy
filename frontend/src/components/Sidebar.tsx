@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Briefcase,
+  CheckCircle2,
   Mail,
   KanbanSquare,
   FileText,
@@ -17,6 +18,7 @@ export const Sidebar: React.FC = () => {
   const navItems = [
     { to: '/', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/jobs', label: 'Job Discovery', icon: Briefcase },
+    { to: '/applied-jobs', label: 'Applied Jobs', icon: CheckCircle2 },
     { to: '/emails', label: 'Email Center', icon: Mail },
     { to: '/applications', label: 'Application Tracker', icon: KanbanSquare },
     { to: '/resume-studio', label: 'Resume & QA Studio', icon: FileText },

@@ -15,7 +15,7 @@ async def ai_provider_status():
         "name": "Google Gemini",
         "provider": "gemini",
         "configured": bool(settings.GEMINI_API_KEY),
-        "model": "gemini-1.5-flash",
+        "model": "gemini-3.8-flash",
         "priority": 1,
         "free_tier": True,
         "status": "ready" if settings.GEMINI_API_KEY else "not_configured",
@@ -58,7 +58,7 @@ async def test_ai_provider(provider: str):
         try:
             import google.generativeai as genai
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-3.8-flash")
             response = model.generate_content("Say 'ApplyPilot AI connected' in one sentence.")
             return {"status": "success", "response": response.text}
         except Exception as e:

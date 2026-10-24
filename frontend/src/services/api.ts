@@ -19,6 +19,9 @@ export const getJobs = async (params?: {
   search?: string;
   location?: string;
   employment_type?: string;
+  source?: string;
+  posted_after?: string;
+  latest_only?: boolean;
   is_bookmarked?: boolean;
   skip?: number;
   limit?: number;
@@ -42,8 +45,19 @@ export const toggleBookmark = async (id: number): Promise<{ bookmarked: boolean 
   return res.data;
 };
 
-export const triggerJobDiscovery = async (): Promise<{ discovered: number; total_processed: number; message: string }> => {
-  const res = await api.post('/jobs/discover');
+export const triggerJobDiscovery = async (autoApply: boolean = false): Promise<{ discovered: number; total_processed: number; auto_applied_count: number; message: string }> => {
+  const res = await api.post('/jobs/discover', null, { params: { auto_apply: autoApply } });
+  return res.data;
+};
+
+export const instantApplyAllLatest = async (minScore: number = 70): Promise<{
+  newly_discovered: number;
+  applications_processed: number;
+  results: any[];
+  gmail_connected: boolean;
+  message: string;
+}> => {
+  const res = await api.post('/jobs/instant-apply-all', null, { params: { min_score: minScore } });
   return res.data;
 };
 
@@ -55,6 +69,37 @@ export const evaluateJobMatch = async (id: number): Promise<{ message: string; m
 // Applications
 export const getApplications = async (status?: string): Promise<{ total: number; applications: Application[] }> => {
   const res = await api.get('/applications', { params: { status, limit: 100 } });
+  return res.data;
+};
+
+export interface AppliedJobsResponse {
+  metrics: {
+    total_applied: number;
+    applied_by_ai: number;
+    applied_by_user: number;
+    responses_count: number;
+    interview_count: number;
+  };
+  applications: Application[];
+  skip: number;
+  limit: number;
+}
+
+export const getAppliedJobs = async (appliedBy?: string): Promise<AppliedJobsResponse> => {
+  const res = await api.get('/applications/applied', { params: { applied_by: appliedBy } });
+  return res.data;
+};
+
+export const recordManualApplication = async (data: {
+  job_id?: number;
+  company?: string;
+  title?: string;
+  applied_via?: string;
+  status?: string;
+  notes?: string;
+  application_url?: string;
+}): Promise<{ status: string; application_id: number; message: string }> => {
+  const res = await api.post('/applications/record-manual', data);
   return res.data;
 };
 

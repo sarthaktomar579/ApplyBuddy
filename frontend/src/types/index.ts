@@ -44,11 +44,15 @@ export interface Job {
 export interface Application {
   id: number;
   job_id: number;
-  job_title: string;
-  company: string;
-  location: string | null;
-  application_url: string | null;
+  job_title?: string;
+  company?: string;
+  location?: string | null;
+  application_url?: string | null;
   status: string;
+  applied_via?: string | null;
+  applied_by?: 'ai' | 'user';
+  applied_by_label?: string;
+  resume_name?: string;
   notes: string | null;
   follow_up_date: string | null;
   interview_date: string | null;
@@ -59,6 +63,15 @@ export interface Application {
   offer_details: string | null;
   created_at: string | null;
   updated_at: string | null;
+  job?: {
+    id: number;
+    title: string;
+    company: string;
+    location: string | null;
+    source?: string;
+    date_posted?: string | null;
+    application_url?: string | null;
+  } | null;
 }
 
 export interface Email {

@@ -39,18 +39,31 @@ class UpdateApplicationRequest(BaseModel):
     offer_details: Optional[str] = None
 
 
+class RecordManualApplicationRequest(BaseModel):
+    job_id: Optional[int] = None
+    company: Optional[str] = None
+    title: Optional[str] = None
+    applied_via: str = "linkedin"  # linkedin, portal, email, referral
+    status: str = "application_submitted"
+    notes: Optional[str] = None
+    application_url: Optional[str] = None
+
+
 @router.get("")
 async def list_applications(
     status: Optional[str] = None,
+    applied_by: Optional[str] = None,
     skip: int = 0,
-    limit: int = 20,
+    limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
-    """List applications with optional status filter."""
+    """List applications with optional status and applied_by filters."""
     query = select(Application).where(Application.user_id == 1)
     
     if status:
         query = query.where(Application.status == status)
+    if applied_by and applied_by in ["ai", "user"]:
+        query = query.where(Application.applied_by == applied_by)
     
     # Count
     count_query = select(func.count()).select_from(query.subquery())
@@ -64,6 +77,125 @@ async def list_applications(
     return {
         "total": total,
         "applications": [_app_to_dict(a) for a in applications],
+    }
+
+
+@router.get("/applied")
+async def get_applied_jobs_dashboard(
+    applied_by: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Dedicated view for Applied Jobs - shows all jobs applied either by AI Agent or by Sarthak.
+    Computes real-time metrics for AI vs User applications and response rates.
+    """
+    base_query = select(Application).where(Application.user_id == 1)
+    
+    # Applied statuses
+    applied_statuses = [
+        "email_sent", "application_submitted", "follow_up_due",
+        "recruiter_replied", "interview_scheduled", "offer_received",
+        "preparing_application", "awaiting_approval"
+    ]
+    base_query = base_query.where(Application.status.in_(applied_statuses))
+
+    if applied_by and applied_by in ["ai", "user"]:
+        base_query = base_query.where(Application.applied_by == applied_by)
+
+    # Metrics
+    all_applied_res = await db.execute(
+        select(Application).where(
+            Application.user_id == 1,
+            Application.status.in_(applied_statuses)
+        )
+    )
+    all_applied = all_applied_res.scalars().all()
+    total_applied = len(all_applied)
+    applied_by_ai = sum(1 for a in all_applied if (a.applied_by == "ai" or "Auto-applied" in (a.notes or "")))
+    applied_by_user = total_applied - applied_by_ai
+    responses_count = sum(1 for a in all_applied if a.status in ["recruiter_replied", "interview_scheduled", "offer_received"])
+
+    # Query with job relationship
+    query = base_query.order_by(Application.updated_at.desc()).offset(skip).limit(limit)
+    result = await db.execute(query.options(selectinload(Application.job)))
+    applications = result.scalars().all()
+
+    return {
+        "metrics": {
+            "total_applied": total_applied,
+            "applied_by_ai": applied_by_ai,
+            "applied_by_user": applied_by_user,
+            "responses_count": responses_count,
+            "interview_count": sum(1 for a in all_applied if a.status == "interview_scheduled"),
+        },
+        "applications": [_app_to_dict(a) for a in applications],
+        "skip": skip,
+        "limit": limit,
+    }
+
+
+@router.post("/record-manual")
+async def record_manual_application(
+    request: RecordManualApplicationRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Record an application that Sarthak applied to directly (e.g. on LinkedIn, portal, or referral)."""
+    target_job_id = request.job_id
+
+    # If no job_id provided, create a manual Job entry
+    if not target_job_id:
+        if not request.company or not request.title:
+            raise HTTPException(status_code=400, detail="Must provide company and title or valid job_id")
+        new_job = Job(
+            user_id=1,
+            title=request.title,
+            company=request.company,
+            source=request.applied_via if request.applied_via == "linkedin" else "manual",
+            application_url=request.application_url,
+            canonical_url=f"user_applied_{request.company}_{request.title}_{datetime.now(timezone.utc).timestamp()}",
+            date_posted=datetime.now(timezone.utc),
+            is_active=True,
+            is_relevant=True,
+        )
+        db.add(new_job)
+        await db.flush()
+        target_job_id = new_job.id
+
+    # Check for existing application
+    existing = await db.execute(
+        select(Application).where(Application.job_id == target_job_id, Application.user_id == 1)
+    )
+    existing_app = existing.scalar_one_or_none()
+
+    if existing_app:
+        existing_app.status = request.status
+        existing_app.applied_via = request.applied_via
+        existing_app.applied_by = "user"
+        if request.notes:
+            existing_app.notes = request.notes
+        existing_app.updated_at = datetime.now(timezone.utc)
+        app_id = existing_app.id
+    else:
+        new_app = Application(
+            user_id=1,
+            job_id=target_job_id,
+            status=request.status,
+            applied_via=request.applied_via,
+            applied_by="user",
+            application_url=request.application_url,
+            notes=request.notes or f"Applied directly by Sarthak via {request.applied_via.capitalize()}.",
+        )
+        db.add(new_app)
+        await db.flush()
+        app_id = new_app.id
+
+    await db.commit()
+    return {
+        "status": "success",
+        "application_id": app_id,
+        "message": "Job application successfully recorded under 'Applied by You'."
     }
 
 
@@ -271,7 +403,8 @@ async def auto_apply_high_matches(request: AutoApplyRequest, db: AsyncSession = 
             job_id=job.id,
             status="email_sent" if (is_gmail_ready and request.send_now) else "preparing_application",
             applied_via="email",
-            notes=f"Auto-applied to {target_name} ({target_email}) with Resume attached.",
+            applied_by="ai",
+            notes=f"Auto-applied to {target_name} ({target_email}) with Resume_SarthakT.pdf attached.",
         )
         db.add(app_obj)
         await db.flush()
@@ -304,11 +437,15 @@ async def auto_apply_high_matches(request: AutoApplyRequest, db: AsyncSession = 
 
 
 def _app_to_dict(app: Application) -> dict:
+    is_ai = getattr(app, "applied_by", None) == "ai" or "auto-appl" in (app.notes or "").lower()
     return {
         "id": app.id,
         "job_id": app.job_id,
         "status": app.status,
-        "applied_via": app.applied_via,
+        "applied_via": app.applied_via or "email",
+        "applied_by": "ai" if is_ai else "user",
+        "applied_by_label": "AI Agent (Auto-Apply)" if is_ai else "Applied by You",
+        "resume_name": "Resume_SarthakT.pdf",
         "notes": app.notes,
         "follow_up_date": app.follow_up_date.isoformat() if app.follow_up_date else None,
         "follow_up_count": app.follow_up_count,
@@ -325,5 +462,8 @@ def _app_to_dict(app: Application) -> dict:
             "title": app.job.title,
             "company": app.job.company,
             "location": app.job.location,
+            "source": app.job.source,
+            "date_posted": app.job.date_posted.isoformat() if app.job.date_posted else None,
+            "application_url": app.job.application_url,
         } if app.job else None,
     }

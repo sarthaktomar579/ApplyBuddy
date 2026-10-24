@@ -18,20 +18,28 @@ class AIProviderService:
 
     async def generate_text(self, prompt: str, system_prompt: str = "") -> str:
         """Generate text using available AI provider."""
-        # 1. Try Gemini
+        # 1. Try Gemini (via direct REST API)
         if self.gemini_key:
             try:
-                import google.generativeai as genai
-                genai.configure(api_key=self.gemini_key)
-                model = genai.GenerativeModel(
-                    model_name="gemini-1.5-flash",
-                    system_instruction=system_prompt if system_prompt else None
-                )
-                response = model.generate_content(prompt)
-                if response and response.text:
-                    return response.text.strip()
+                import httpx
+                gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={self.gemini_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}]
+                }
+                if system_prompt:
+                    payload["systemInstruction"] = {
+                        "parts": [{"text": system_prompt}]
+                    }
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    resp = await client.post(gemini_url, json=payload)
+                    if resp.status_code == 200:
+                        cand = resp.json().get("candidates", [])
+                        if cand and "content" in cand[0] and "parts" in cand[0]["content"]:
+                            text_parts = [p.get("text", "") for p in cand[0]["content"]["parts"] if "text" in p]
+                            if text_parts:
+                                return "".join(text_parts).strip()
             except Exception as e:
-                logger.warning(f"Gemini generation failed: {e}. Trying fallback...")
+                logger.warning(f"Gemini REST call failed: {e}. Trying fallback...")
 
         # 2. Try Groq
         if self.groq_key:

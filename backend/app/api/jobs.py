@@ -38,10 +38,13 @@ async def list_jobs(
     search: Optional[str] = None,
     location: Optional[str] = None,
     employment_type: Optional[str] = None,
+    source: Optional[str] = None,
+    posted_after: Optional[str] = None,
+    latest_only: bool = False,
     is_active: Optional[bool] = True,
     is_relevant: Optional[bool] = None,
     is_bookmarked: Optional[bool] = None,
-    sort_by: str = "discovered_at",
+    sort_by: str = "date_posted",
     sort_order: str = "desc",
     db: AsyncSession = Depends(get_db),
 ):
@@ -54,6 +57,20 @@ async def list_jobs(
         query = query.where(Job.is_relevant == is_relevant)
     if is_bookmarked is not None:
         query = query.where(Job.is_bookmarked == is_bookmarked)
+    if source:
+        query = query.where(Job.source == source)
+    
+    # Filter by date_posted
+    if latest_only and not posted_after:
+        posted_after = "2026-10-22"
+    
+    if posted_after:
+        try:
+            target_date = datetime.fromisoformat(posted_after.replace("Z", "+00:00"))
+        except Exception:
+            target_date = datetime(2026, 10, 22, 0, 0, tzinfo=timezone.utc)
+        query = query.where(Job.date_posted >= target_date)
+
     if search:
         search_term = f"%{search}%"
         query = query.where(
@@ -186,8 +203,8 @@ async def delete_job(job_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/discover")
-async def trigger_job_discovery(db: AsyncSession = Depends(get_db)):
-    """Trigger job discovery engine to fetch fresh opportunities and match them."""
+async def trigger_job_discovery(auto_apply: bool = False, db: AsyncSession = Depends(get_db)):
+    """Trigger job discovery engine to fetch fresh opportunities (>= Oct 22, 2026) and match them."""
     from app.services.job_discovery import job_discovery_service
     from app.models.profile import Profile, Skill
 
@@ -202,13 +219,51 @@ async def trigger_job_discovery(db: AsyncSession = Depends(get_db)):
         "preferred_locations": ["Bengaluru", "Hyderabad", "Pune", "Delhi NCR", "Noida", "Mumbai", "Remote"],
     }
 
-    result = await job_discovery_service.discover_jobs(db, profile_data)
+    result = await job_discovery_service.discover_jobs(db, profile_data, auto_apply_instant=auto_apply)
     return {
         "status": "success",
         "discovered": result["discovered"],
         "existing": result["existing"],
         "total_processed": result["total_processed"],
-        "message": f"Discovery complete: {result['discovered']} new jobs found and evaluated."
+        "auto_applied_count": result.get("auto_applied_count", 0),
+        "message": f"Discovery complete: {result['discovered']} jobs indexed, {result.get('auto_applied_count', 0)} automatically applied upon publication."
+    }
+
+
+@router.post("/instant-apply-all")
+async def instant_apply_all_latest(min_score: int = 70, db: AsyncSession = Depends(get_db)):
+    """
+    Instantly apply to all relevant latest jobs (posted on or after Oct 22, 2026, including LinkedIn).
+    Creates tailored application, attaches Resume_SarthakT.pdf, and sends/queues email.
+    """
+    from app.services.job_discovery import job_discovery_service
+    from app.api.applications import auto_apply_to_matches, AutoApplyRequest
+    from app.models.profile import Profile
+
+    profile_res = await db.execute(select(Profile).where(Profile.user_id == 1).options(selectinload(Profile.skills)))
+    profile = profile_res.scalar_one_or_none()
+    skills = [s.name for s in (profile.skills or [])] if profile else []
+
+    profile_data = {
+        "full_name": profile.full_name if profile else "Sarthak Singh Tomar",
+        "skills": skills,
+        "preferred_locations": ["Bengaluru", "Hyderabad", "Pune", "Delhi NCR", "Noida", "Mumbai", "Remote"],
+    }
+
+    # First discover any latest jobs
+    disc_res = await job_discovery_service.discover_jobs(db, profile_data, auto_apply_instant=True)
+
+    # Then run auto-apply across all matches
+    apply_req = AutoApplyRequest(min_score=min_score, send_now=True, max_applications=30)
+    apply_res = await auto_apply_to_matches(apply_req, db=db)
+
+    return {
+        "status": "success",
+        "newly_discovered": disc_res["discovered"],
+        "applications_processed": apply_res["processed_count"],
+        "results": apply_res["results"],
+        "gmail_connected": apply_res["gmail_connected"],
+        "message": f"Instant Apply Completed: {apply_res['processed_count']} relevant positions applied with Resume_SarthakT.pdf attached."
     }
 
 
