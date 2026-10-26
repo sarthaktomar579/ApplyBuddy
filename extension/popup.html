@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ApplyPilot AI</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <div class="popup-header">
+      <div class="logo-box">
+        <div class="logo-dot"></div>
+        <h2>ApplyPilot AI</h2>
+      </div>
+      <span class="badge">v1.0</span>
+    </div>
+
+    <div class="profile-card">
+      <div class="profile-name">Sarthak Singh Tomar</div>
+      <div class="profile-sub">IIIT Kota '26 • Full-Stack & AI</div>
+      <div class="profile-tags">
+        <span class="tag">Exp: 1 yr</span>
+        <span class="tag">Notice: 7d</span>
+        <span class="tag">5L (NCR) • 6L (Blr/Pune/Hyd) • 4.5L (Remote)</span>
+      </div>
+    </div>
+
+    <div class="status-card">
+      <div class="status-row">
+        <span>Backend Connection:</span>
+        <span id="backend-status" class="status-pill checking">Checking...</span>
+      </div>
+      <div class="status-row">
+        <span>30-Day Duplicate Shield:</span>
+        <span id="shield-count" class="status-pill active">Active (Gmail)</span>
+      </div>
+      <div class="status-row">
+        <span>Anti-Scam Filter:</span>
+        <span class="status-pill active">Active (Dexter/ThinkNova)</span>
+      </div>
+    </div>
+
+    <div class="action-buttons">
+      <button id="start-harvest-btn" class="btn btn-apply" style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); margin-bottom: 6px;">
+        ⚡ Auto-Harvest & Email Recruiter Posts
+      </button>
+      <button id="start-batch-btn" class="btn btn-secondary" style="margin-bottom: 6px;">
+        💼 Easy Apply Jobs (Batch 15)
+      </button>
+      <button id="open-posts-btn" class="btn btn-primary" style="margin-bottom: 6px;">
+        🔍 Open Hiring Posts Feed
+      </button>
+      <button id="open-dashboard-btn" class="btn btn-secondary">
+        📊 Open Applied Jobs Hub
+      </button>
+    </div>
+
+    <div class="footer-note">
+      Real DOM automation running inside your Chrome session.
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
