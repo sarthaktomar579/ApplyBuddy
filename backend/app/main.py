@@ -44,10 +44,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS - allow frontend
+# CORS - allow frontend and Chrome extensions
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000"],
+    allow_origin_regex=r".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
