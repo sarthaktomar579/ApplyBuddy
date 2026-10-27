@@ -252,7 +252,7 @@ Candidate: {candidate_name}
 Education: Final-year B.Tech at IIIT Kota (2026 graduate)
 Role applied: {role} at {company}
 Target Company: {company}
-Internship Experience: Full Stack Developer at Skygnosis (built real-time audio streaming workflows with WebSockets and Document PiP mini-player) and SDE Intern at Xelron AI (Dockerized evaluation benchmarks).
+Work Experience: Full Stack Developer at Skygnosis (built real-time audio streaming workflows with WebSockets and Document PiP mini-player) and Software Developer at Xelron AI (Dockerized evaluation benchmarks).
 Key Achievements: 1500+ DSA problems solved (Knight on LeetCode), strong in React, FastAPI, Node.js, Python, LLM integrations.
 Projects:
 1. AI Medical Reporting Platform: Floating mini-player using Document PiP API + React Portals for real-time dictation without switching tabs.
