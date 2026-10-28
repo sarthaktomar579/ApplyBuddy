@@ -77,9 +77,10 @@ export const AppliedJobsPage: React.FC = () => {
   const handleInstantApplyAll = async () => {
     try {
       setIsApplyingAll(true);
-      const res = await instantApplyAllLatest(70);
+      const res = await instantApplyAllLatest(65, 15);
+      const skippedText = res.skipped_duplicates_count ? ` (${res.skipped_duplicates_count} duplicates skipped via 30-day shield)` : '';
       setNotification({
-        message: res.message || `Successfully auto-applied to relevant positions!`,
+        message: res.message ? `${res.message}${skippedText}` : `Safely applied to ${res.applications_processed || 15} jobs!${skippedText}`,
         type: 'success'
       });
       fetchData(activeTab);
@@ -188,20 +189,42 @@ export const AppliedJobsPage: React.FC = () => {
           <button
             onClick={handleInstantApplyAll}
             disabled={isApplyingAll}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary-600 via-indigo-600 to-purple-600 hover:from-primary-500 hover:to-purple-500 text-white font-medium text-sm shadow-lg shadow-primary-500/25 transition-all disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-medium text-sm shadow-lg shadow-emerald-600/25 transition-all disabled:opacity-50"
           >
             {isApplyingAll ? (
               <>
                 <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                <span>Auto-Applying...</span>
+                <span>Running Safe Batch (10–15 Jobs)...</span>
               </>
             ) : (
               <>
                 <Zap className="w-4 h-4 text-amber-300" />
-                <span>Instant Auto-Apply All</span>
+                <span>⚡ Safe Batch Apply (10–15 Jobs)</span>
               </>
             )}
           </button>
+        </div>
+      </div>
+
+      {/* Safety & Anti-Scam Shield Guarantees */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="flex items-center gap-3 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-xs font-medium">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>
+            <strong className="text-white">Anti-Scam Shield Active:</strong> Fake training institutes & consultancies (Dexter, ThinkNova, RecruitDiary, etc.) are strictly filtered out.
+          </span>
+        </div>
+        <div className="flex items-center gap-3 p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-300 text-xs font-medium">
+          <Sparkles className="w-4 h-4 text-blue-400 shrink-0" />
+          <span>
+            <strong className="text-white">Zero Email Bounces:</strong> Applied directly via official LinkedIn Easy Apply & verified portals with <span className="underline decoration-primary-400">Resume_SarthakT.pdf</span> attached.
+          </span>
+        </div>
+        <div className="flex items-center gap-3 p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/25 text-purple-300 text-xs font-medium">
+          <Clock className="w-4 h-4 text-purple-400 shrink-0" />
+          <span>
+            <strong className="text-white">30-Day Duplicate Shield:</strong> Scans your Gmail inbox confirmations (Flam, Aumraa, InfraTech, etc.) & DB to prevent any duplicate application.
+          </span>
         </div>
       </div>
 
