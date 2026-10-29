@@ -151,6 +151,61 @@ async def generate_cold_email(request: GenerateEmailRequest, db: AsyncSession = 
     }
 
 
+class RunCampaignRequest(BaseModel):
+    daily_limit: int = 100
+    delay_seconds: int = 30
+
+
+@router.post("/run-automated-campaign")
+async def start_campaign(request: Optional[RunCampaignRequest] = None):
+    """Trigger the automated cold email campaign for 500+ startups."""
+    from app.services.email_outreach_service import campaign_manager
+    daily_limit = request.daily_limit if request else 100
+    delay_seconds = request.delay_seconds if request else 30
+    res = campaign_manager.start_campaign(daily_limit=daily_limit, delay_seconds=delay_seconds)
+    return res
+
+
+@router.get("/internet-opportunities")
+async def get_internet_opportunities(db: AsyncSession = Depends(get_db)):
+    """Fetch verified tech job opportunities across the internet with explicit verified emails."""
+    from app.services.internet_job_harvester import get_all_verified_internet_opportunities
+    from app.services.email_outreach_service import get_valid_gmail_token
+    token = await get_valid_gmail_token(db)
+    targets = await get_all_verified_internet_opportunities(db, token)
+    return {
+        "total": len(targets),
+        "targets": targets
+    }
+
+
+@router.post("/run-internet-outreach")
+async def run_internet_outreach(request: Optional[RunCampaignRequest] = None, db: AsyncSession = Depends(get_db)):
+    """
+    Autonomously harvest internet openings and deliver applications with Resume attached.
+    Paces by 30 seconds with 15-day deduplication and zero-bounce shield.
+    """
+    from app.services.internet_job_harvester import run_autonomous_internet_outreach
+    daily_limit = request.daily_limit if request else 50
+    delay_seconds = request.delay_seconds if request else 30
+    res = await run_autonomous_internet_outreach(db, daily_limit=daily_limit, delay_seconds=delay_seconds)
+    return res
+
+
+@router.get("/campaign-status")
+async def get_campaign_status():
+    """Retrieve live metrics and log stream of the email campaign."""
+    from app.services.email_outreach_service import campaign_manager
+    return campaign_manager.get_status()
+
+
+@router.post("/stop-campaign")
+async def stop_campaign():
+    """Pause the automated cold email campaign."""
+    from app.services.email_outreach_service import campaign_manager
+    return campaign_manager.stop_campaign()
+
+
 @router.get("/{email_id}")
 async def get_email(email_id: int, db: AsyncSession = Depends(get_db)):
     """Get email details."""
