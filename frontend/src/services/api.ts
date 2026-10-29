@@ -50,14 +50,15 @@ export const triggerJobDiscovery = async (autoApply: boolean = false): Promise<{
   return res.data;
 };
 
-export const instantApplyAllLatest = async (minScore: number = 70): Promise<{
+export const instantApplyAllLatest = async (minScore: number = 65, maxCount: number = 50): Promise<{
   newly_discovered: number;
   applications_processed: number;
+  skipped_duplicates_count?: number;
   results: any[];
   gmail_connected: boolean;
   message: string;
 }> => {
-  const res = await api.post('/jobs/instant-apply-all', null, { params: { min_score: minScore } });
+  const res = await api.post('/jobs/instant-apply-all', null, { params: { min_score: minScore, max_count: maxCount } });
   return res.data;
 };
 
@@ -121,9 +122,22 @@ export const updateApplicationDetails = async (id: number, details: Partial<Appl
 export const autoApplyMatches = async (params?: { min_score?: number; max_count?: number; send_now?: boolean }): Promise<{
   processed_count: number;
   results: any[];
+  skipped_duplicates_count?: number;
+  skipped_duplicates?: any[];
   gmail_connected: boolean;
 }> => {
   const res = await api.post('/applications/auto-apply', params || {});
+  return res.data;
+};
+
+export const getPast30DaysHistory = async (): Promise<{
+  status: string;
+  shield_active: boolean;
+  total_unique_companies: number;
+  companies: string[];
+  gmail_confirmations: Array<{ company: string; subject: string; date: string; source: string }>;
+}> => {
+  const res = await api.get('/applications/past-30-days-history');
   return res.data;
 };
 
@@ -186,6 +200,44 @@ export const cancelEmail = async (id: number): Promise<any> => {
 
 export const sendEmailViaGmail = async (id: number): Promise<any> => {
   const res = await api.post(`/gmail/send/${id}`);
+  return res.data;
+};
+
+export const startAutomatedCampaign = async (params?: { daily_limit?: number; delay_seconds?: number }): Promise<any> => {
+  const res = await api.post('/emails/run-automated-campaign', params || {});
+  return res.data;
+};
+
+export const getCampaignStatus = async (): Promise<{
+  is_running: boolean;
+  is_paused: boolean;
+  sent_today: number;
+  daily_limit: number;
+  delay_seconds: number;
+  skipped_15d_count: number;
+  total_targets: number;
+  current_index: number;
+  current_target: any;
+  started_at: string | null;
+  last_sent_at: string | null;
+  logs: Array<{ timestamp: string; type: string; message: string; details?: any }>;
+}> => {
+  const res = await api.get('/emails/campaign-status');
+  return res.data;
+};
+
+export const stopCampaign = async (): Promise<any> => {
+  const res = await api.post('/emails/stop-campaign');
+  return res.data;
+};
+
+export const getInternetOpportunities = async (): Promise<{ total: number; targets: any[] }> => {
+  const res = await api.get('/emails/internet-opportunities');
+  return res.data;
+};
+
+export const runInternetOutreach = async (params?: { daily_limit?: number; delay_seconds?: number }): Promise<any> => {
+  const res = await api.post('/emails/run-internet-outreach', params || {});
   return res.data;
 };
 
