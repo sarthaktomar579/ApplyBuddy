@@ -104,16 +104,17 @@ export const JobsPage: React.FC = () => {
   };
 
   const handleAutoApply = async () => {
-    if (!window.confirm('Auto-Apply will generate personalized cold emails for all 70%+ match jobs, attach your resume (Resume_SarthakT.pdf), and dispatch them via your Gmail. Proceed?')) {
+    if (!window.confirm('Safe Auto-Apply will process up to 15 relevant positions in controlled pacing to keep your LinkedIn account 100% safe. Fake firms (Dexter, ThinkNova, etc.) are filtered out and any company applied to in the past 30 days is skipped. Proceed?')) {
       return;
     }
     setAutoApplying(true);
     try {
-      const res = await autoApplyMatches({ min_score: 70, max_count: 5, send_now: true });
+      const res = await autoApplyMatches({ min_score: 65, max_count: 15, send_now: false });
+      const dupText = res.skipped_duplicates_count ? ` (${res.skipped_duplicates_count} duplicates protected via 30-day shield)` : '';
       if (res.processed_count > 0) {
-        setToastMessage(`Auto-applied to ${res.processed_count} top matching jobs! Resume attached & emails processed.`);
+        setToastMessage(`Successfully auto-applied to ${res.processed_count} relevant positions!${dupText} Resume attached.`);
       } else {
-        setToastMessage('All high-match jobs are already applied to or in your pipeline!');
+        setToastMessage(`No new unapplied positions found${dupText}! Check the Applied Jobs tab.`);
       }
       setTimeout(() => setToastMessage(null), 5000);
       await fetchJobsList();
@@ -148,10 +149,10 @@ export const JobsPage: React.FC = () => {
             <button
               onClick={handleAutoApply}
               disabled={autoApplying}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/30 transition-all disabled:opacity-60"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/30 transition-all disabled:opacity-60"
             >
               {autoApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-              Auto-Apply to High Matches (70%+)
+              ⚡ Safe Batch (10–15 Jobs)
             </button>
             <button
               onClick={() => setShowManualModal(true)}
@@ -163,7 +164,7 @@ export const JobsPage: React.FC = () => {
             <button
               onClick={handleDiscover}
               disabled={discovering}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium shadow-md shadow-indigo-600/30 transition-all disabled:opacity-60"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium shadow-md shadow-indigo-600/30 transition-all disabled:opacity-60"
             >
               {discovering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
               Scout Fresh Jobs
