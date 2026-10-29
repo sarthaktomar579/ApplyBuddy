@@ -22,7 +22,8 @@ import {
   Clock,
   CheckCircle2,
   Loader2,
-  DollarSign
+  DollarSign,
+  Zap
 } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
@@ -135,10 +136,17 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+              <Link
+                to="/emails"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+              >
+                <Zap className="w-4 h-4 text-amber-300" />
+                ⚡ Automated Email Outreach (500 Startups)
+              </Link>
               <button
                 onClick={handleDiscover}
                 disabled={discovering}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
               >
                 {discovering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                 Scan For Opportunities
